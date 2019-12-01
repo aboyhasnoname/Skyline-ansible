@@ -1,0 +1,10 @@
+---
+- hosts: Test-Servers
+  remote_user: root
+  tasks:
+    - name: swipe sources to riken
+      copy:
+        src: /etc/ansible/group_vars/blinkload/debian-sources/https-riken
+        dest: /etc/apt/sources.list
+        mode: '0644'
+        force: yes

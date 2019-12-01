@@ -1,0 +1,13 @@
+#Riken
+deb https://ftp.riken.jp/pub/Linux/debian/debian/ stretch main contrib non-free
+deb https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-updates main contrib non-free
+deb https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-proposed-updates main contrib non-free
+deb https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-backports main contrib non-free
+deb-src https://ftp.riken.jp/pub/Linux/debian/debian/ stretch main contrib non-free
+deb-src https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-updates main contrib non-free
+deb-src https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-proposed-updates main contrib non-free
+deb-src https://ftp.riken.jp/pub/Linux/debian/debian/ stretch-backports main contrib non-free
+#
+#
+deb https://ftp.riken.jp/pub/Linux/debian/debian-security/ stretch/updates main contrib non-free
+deb-src https://ftp.riken.jp/pub/Linux/debian/debian-security/ stretch/updates main contrib non-free

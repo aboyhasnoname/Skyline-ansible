@@ -1,0 +1,3 @@
+---
+https-riken: /etc/ansible/group_vars/blinkload/debian-sources/https-riken
+https-USTC: /etc/ansible/group_vars/blinkload/debian-sources/https-USTC
