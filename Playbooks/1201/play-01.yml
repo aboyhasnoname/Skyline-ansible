@@ -1,10 +1,150 @@
 ---
 - hosts: Test-Servers
+  vars:
+    libsodium_version: 1.0.18
   remote_user: root
   tasks:
-    - name: swipe sources to riken
+  
+    - name: change hostname
+      shell: |
+        export NewHostName=Test-02 && export OldHostName=$(cat /etc/hostname) && sed -i 's/'$OldHostName/$NewHostName'/g' /etc/hostname && sed -i 's/'$OldHostName/$NewHostName'/g' /etc/hosts && cat /etc/hostname && cat /etc/hosts
+      ignore_errors: true
+      
+    - name: change DNS
+      shell: |
+        echo -e "nameserver 1.0.0.1\nnameserver 8.8.4.4" > /etc/resolv.conf
+      ignore_errors: true
+      
+    - name: enable BBR
+      shell: |
+        echo "vm.swappiness = 10" >> /etc/sysctl.conf && echo "net.core.default_qdisc = fq" >> /etc/sysctl.conf && echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf && echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf && sed -i '$a root hard nofile 1024000\nroot soft nofile 1024000' /etc/security/limits.conf && sed -i '$a * hard nofile 1024000\n* soft nofile 1024000' /etc/security/limits.conf && ulimit -n 1024000 && sysctl -p && uname -a && sysctl net.ipv4.tcp_available_congestion_control && sysctl net.ipv4.tcp_congestion_control && lsmod | grep bbr
+      ignore_errors: true
+      
+    - name: reboot
+      reboot:
+        reboot_timeout: 900
+  
+    - name: swipe sources to riken-http
       copy:
-        src: /etc/ansible/group_vars/blinkload/debian-sources/https-riken
+        src: /etc/ansible/group_vars/blinkload/debian-sources/riken-http
         dest: /etc/apt/sources.list
         mode: '0644'
         force: yes
+        
+    - name: install apt in https
+      apt:
+        pkg: "{{ items }}"
+        force_apt_get: yes
+        update_cache: yes
+        cache_valid_time: 86400
+        state: latest
+      vars:
+        items:
+        - apt-transport-https
+      when: ansible_os_family == "Debian"
+      
+    - name: swipe sources to riken-https
+      copy:
+        src: /etc/ansible/group_vars/blinkload/debian-sources/riken-https
+        dest: /etc/apt/sources.list
+        mode: '0644'
+        force: yes
+        
+    - name: install debian-based OS dependencies
+      apt:
+        pkg: "{{ items }}"
+        force_apt_get: yes
+        update_cache: yes
+        cache_valid_time: 86400
+        state: latest
+      vars:
+        items:
+        - apt-transport-https
+        - nano
+        - cron
+        - unzip
+        - iputils-ping
+        - net-tools
+        - curl
+        - git
+        - nload
+        - htop
+        - ca-certificates
+        - gnupg2
+        - software-properties-common
+        - python
+        - python-pip
+        - python-setuptools
+        - build-essential
+        - ntpdate
+      when: ansible_os_family == "Debian"
+      
+    - name: download libsodium
+      get_url:
+        url: 'https://github.com/jedisct1/libsodium/releases/download/1.0.18-RELEASE/libsodium-1.0.18.tar.gz'
+        dest: /usr/local/src/1.0.18.tar.gz
+    
+    - name: extract libsodium
+      unarchive:
+        src: /usr/local/src/1.0.18.tar.gz
+        dest: /usr/local/src
+        creates: /usr/local/src/libsodium-1.0.18/Makefile
+        copy: no
+    
+    - name: config libsodium
+      command: ./configure
+      args:
+        chdir: /usr/local/src/libsodium-1.0.18-RELEASE
+        creates: /usr/local/src/libsodium-1.0.18-RELEASE/Makefile
+    
+    - name: compile libsodium
+      command: make -j2
+      args:
+        chdir: /usr/local/src/libsodium-1.0.18-RELEASE
+        creates: /usr/local/src/libsodium-1.0.18-RELEASE/src/libsodium/.libs/libsodium.so
+    
+    - name: install libsodium
+      command: make install
+      args:
+        chdir: /usr/local/src/libsodium-1.0.18-RELEASE
+        creates: /usr/local/lib/libsodium.so
+    
+    - name: update ld.so.conf.d
+      shell: |
+        echo /usr/local/lib > /etc/ld.so.conf.d/usr_local_lib.conf
+      ignore_errors: true
+    
+    - name: run ldconfig to update config
+      command: ldconfig
+      
+      
+    - name: install shadowsocks
+      shell: |
+        export NodeSequence=306 && export NodeIP=0.0.0.0 && rm -rf /blinkload$NodeSequence && mkdir /blinkload$NodeSequence && cd /blinkload$NodeSequence && git clone -b manyuser https://github.com/NimaQu/shadowsocks.git && cd /blinkload$NodeSequence/shadowsocks && python -m pip install --upgrade pip setuptools && cp apiconfig.py userapiconfig.py && cp config.json user-config.json && python -m pip install -r requirements.txt && echo -e "# Config\nNODE_ID = $NodeSequence\n\n\n# hour,set 0 to disable\nSPEEDTEST = 0\nCLOUDSAFE = 1\nANTISSATTACK = 0\nAUTOEXEC = 0\n\nMU_SUFFIX = 'ds.download.windowsupdate.com'\nMU_REGEX = '%5m%id.%suffix'\n\nSERVER_PUB_ADDR = '127.0.0.1'  # mujson_mgr need this to generate ssr link\nAPI_INTERFACE = 'modwebapi'  # glzjinmod, modwebapi\n\nWEBAPI_URL = 'https://api.cn2.today'\nWEBAPI_TOKEN = 'Sv23c31Q'\n\n# mudb\nMUDB_FILE = 'mudb.json'\n\n# Mysql\nMYSQL_HOST = '127.0.0.1'\nMYSQL_PORT = 3306\nMYSQL_USER = 'ss'\nMYSQL_PASS = 'ss'\nMYSQL_DB = 'shadowsocks'\n\nMYSQL_SSL_ENABLE = 0\nMYSQL_SSL_CA = ''\nMYSQL_SSL_CERT = ''\nMYSQL_SSL_KEY = ''\n\n# API\nAPI_HOST = '127.0.0.1'\nAPI_PORT = 80\nAPI_PATH = '/mu/v2/'\nAPI_TOKEN = 'abcdef'\nAPI_UPDATE_TIME = 60\n\n# Manager (ignore this)\nMANAGE_PASS = 'ss233333333'\n# if you want manage in other server you should set this value to global ip\nMANAGE_BIND_IP = '127.0.0.1'\n# make sure this port is idle\nMANAGE_PORT = 23333" > /blinkload$NodeSequence/shadowsocks/userapiconfig.py && echo -e "{\n    'server': '$NodeIP',\n    'server_ipv6': '$NodeIP',\n    'server_port': 8388,\n    'local_address': '127.0.0.1',\n    'local_port': 1080,\n\n    'password': 'm',\n    'timeout': 120,\n    'udp_timeout': 60,\n    'method': 'chacha20-ietf',\n    'protocol': 'auth_aes128_md5',\n    'protocol_param': '',\n    'obfs': 'http_simple',\n    'obfs_param': '',\n    'speed_limit_per_con': 0,\n\n    'dns_ipv6': false,\n    'connect_verbose_info': 0,\n    'connect_hex_data': 0,\n    'redirect': 'ds.download.windowsupdate.com',\n    'fast_open': true,\n    'friendly_detect': 1\n}" > /blinkload$NodeSequence/shadowsocks/user-config.json && sed -i 's/'"'"/'"''/g' /blinkload$NodeSequence/shadowsocks/user-config.json && cd /root && echo -e "[Unit]\nDescription=Shadowsocksr Node Service\nAfter=rc-local.service\n\n[Service]\nType=simple\nUser=root\nGroup=root\nExecStart=/usr/bin/nohup /usr/bin/python /blinkload$NodeSequence/shadowsocks/server.py m>> /blinkload$NodeSequence/shadowsocks/ssserver.log 2>&1 &\nExecStop=/usr/bin/bash /blinkload$NodeSequence/shadowsocks/stop.sh\nRestart=always\nLimitNOFILE=512000\n\n[Install]\nWantedBy=multi-user.target" > /root/blinkload$NodeSequence.service && chmod 754 blinkload$NodeSequence.service && mv blinkload$NodeSequence.service /etc/systemd/system && systemctl enable blinkload$NodeSequence && systemctl start blinkload$NodeSequence
+      ignore_errors: true
+        
+        
+    - name: install docker - add apt-key
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+        
+    - name: install docker - add apt-repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/debian stretch stable
+        state: present
+        
+    - name: install docker
+      apt:
+        pkg: docker-ce
+        force_apt_get: yes
+        update_cache: yes
+        cache_valid_time: 86400
+        state: latest
+        
+    - name: enable service 306 and ensure it is running
+      systemd:
+        name: blinkload306
+        enabled: yes
+        masked: no
+        state: restarted
